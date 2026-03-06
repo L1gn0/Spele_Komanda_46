@@ -10,3 +10,17 @@ kas spēlē ar aplīšiem. Spēlētājs ar aplīšiem drīkst aizvietot divus bl
 un aplīti, kas stāv blakus, ar aplīti (XO=O) un par to iegūt vienu punktu. Spēlētājs ar krustiņiem līdzīgi drīkst aizvietot divus aplīšus ar krustiņu (OO=X)
 un par to iegūt 2 punktus, un aplīti un krustiņu ar krustiņu (OX=X) un iegūt 1 punktu. Spēle beidzas, kad kāds no spēlētājiem nevar izdarīt gājienu,
 vai simbolu virknē ir palikusi tikai viena figūra. Uzvar spēlētājs, kam spēles beigās ir vairāk punktu.
+
+
+
+Darba autori:
+
+Iļja Rimša - 241RDB324,
+
+Iveta Afanasyeva - 241RDB313,
+
+Kristaps Verečinskis - 231RDB137,
+
+Vladislav Ebert - 241RDB316,
+
+Andrejs Vjaļikovs - 231REB025
