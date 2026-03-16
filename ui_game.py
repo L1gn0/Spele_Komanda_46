@@ -88,7 +88,6 @@ class GameGUI(tk.Frame):
         if opponent == "computer":
             self.player_type = {"O": "human", "X": "computer"}
             alg_name = "Minimakss" if alg == "minimax" else "Alfa–beta"
-            self.meta_lbl.config(text=f"Pret datoru | Algoritms: {alg_name} | Pagaidām random")
         else:
             self.player_type = {"O": "human", "X": "human"}
             self.meta_lbl.config(text="2 cilvēki uz viena datora")

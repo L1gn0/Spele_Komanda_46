@@ -76,3 +76,12 @@ class GameState:
         if x > o:
             return "Uzvar X (krustiņi)!"
         return "Neizšķirts!"
+
+    def copy(self):
+        """Returns a deep copy of the current game state for search purposes."""
+        new_state = GameState()
+        new_state.s = self.s
+        new_state.turn = self.turn
+        new_state.score = self.score.copy()
+        new_state.game_over = self.game_over
+        return new_state
