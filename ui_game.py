@@ -4,6 +4,7 @@ from tkinter import messagebox
 from config import THEME
 from game_logic import GameState
 from algorithms import choose_move
+from tree import make_state, build_game_tree, tree_to_text
 
 
 class GameGUI(tk.Frame):
@@ -103,6 +104,11 @@ class GameGUI(tk.Frame):
         self.destroy()
         self.on_back()
 
+    def _make_tree(self):
+        state = make_state(self.game.s, turn=self.game.turn)
+        tree = build_game_tree(state, depth=3, ai_player=self.game.turn)
+        print(tree_to_text(tree))
+
     def _maybe_computer_move(self):
         if self.game.game_over:
             return
@@ -117,6 +123,7 @@ class GameGUI(tk.Frame):
             return
 
         pair, repl, pts = self.game.apply_move(move_index)
+        self._make_tree()
         self.info_lbl.config(text=f"Dators: {pair} → {repl} (+{pts}p)")
         self._refresh()
 
@@ -154,6 +161,7 @@ class GameGUI(tk.Frame):
                 return
 
             pair, repl, pts = self.game.apply_move(a)
+            self._make_tree()
             self.selected.clear()
             self.info_lbl.config(text=f"Gājiens: {pair} → {repl} (+{pts}p)")
             self._refresh()
