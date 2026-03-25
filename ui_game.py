@@ -3,8 +3,7 @@ from tkinter import messagebox
 
 from config import THEME
 from game_logic import GameState
-from algorithms import choose_move
-from tree import make_state, build_game_tree, tree_to_text
+from algorithms import choose_move, GameStats
 
 
 class GameGUI(tk.Frame):
@@ -16,6 +15,9 @@ class GameGUI(tk.Frame):
         self.game = GameState()
         self.selected = []
         self.player_type = {"O": "human", "X": "human"}
+        self.computer_symbol = None
+        self.last_search_stats = None
+        self.game_stats = None
 
         self._build_ui()
         self._apply_settings_and_start()
@@ -76,37 +78,49 @@ class GameGUI(tk.Frame):
         )
         self.info_lbl.pack(fill="x")
 
-        self.board_frame = tk.Frame(self, padx=14, pady=14, bg=THEME["bg"])
+        self.board_frame = tk.Frame(self, padx=10, pady=10, bg=THEME["bg"])
         self.board_frame.pack(fill="both", expand=True)
 
     def _apply_settings_and_start(self):
         n = self.settings["length"]
         opponent = self.settings["opponent"]
         alg = self.settings["algorithm"]
+        starting_player = self.settings.get("starting_player", "human")
 
-        self.game.generate(n)
+        self.game.generate(n, starting_turn="O")
 
         if opponent == "computer":
-            self.player_type = {"O": "human", "X": "computer"}
-            alg_name = "Minimakss" if alg == "minimax" else "Alfa–beta"
+            if starting_player == "computer":
+                self.player_type = {"O": "computer", "X": "human"}
+                self.computer_symbol = "O"
+                starter_text = "Sāk dators (O)"
+            else:
+                self.player_type = {"O": "human", "X": "computer"}
+                self.computer_symbol = "X"
+                starter_text = "Sāk cilvēks (O)"
+
+            self.game_stats = GameStats(
+                algorithm_name=alg,
+                computer_symbol=self.computer_symbol
+            )
+
+            alg_name = "Minimakss" if alg == "minimax" else "Alfa-beta"
+            self.meta_lbl.config(text=f"Pret datoru | Algoritms: {alg_name} | {starter_text}")
         else:
             self.player_type = {"O": "human", "X": "human"}
-            self.meta_lbl.config(text="2 cilvēki uz viena datora")
+            self.computer_symbol = None
+            self.game_stats = None
+            self.meta_lbl.config(text="2 cilvēki uz viena datora | Sāk O")
 
         if not self.game.has_any_legal_move() and len(self.game.s) > 1:
             self.game.game_over = True
 
         self._refresh()
-        self.after(150, self._maybe_computer_move)
+        self.after(200, self._maybe_computer_move)
 
     def _back(self):
         self.destroy()
         self.on_back()
-
-    def _make_tree(self):
-        state = make_state(self.game.s, turn=self.game.turn)
-        tree = build_game_tree(state, depth=3, ai_player=self.game.turn)
-        print(tree_to_text(tree))
 
     def _maybe_computer_move(self):
         if self.game.game_over:
@@ -114,7 +128,16 @@ class GameGUI(tk.Frame):
         if self.player_type.get(self.game.turn) != "computer":
             return
 
-        move_index = choose_move(self.game, self.settings["algorithm"])
+        move_index, stats = choose_move(
+            self.game,
+            self.settings["algorithm"],
+            self.computer_symbol
+        )
+        self.last_search_stats = stats
+
+        if self.game_stats is not None:
+            self.game_stats.add_search(stats)
+
         if move_index is None:
             self.game.game_over = True
             self._refresh()
@@ -122,14 +145,21 @@ class GameGUI(tk.Frame):
             return
 
         pair, repl, pts = self.game.apply_move(move_index)
-        self._make_tree()
-        self.info_lbl.config(text=f"Dators: {pair} → {repl} (+{pts}p)")
+        self.info_lbl.config(
+            text=(
+                f"Dators: {pair} → {repl} (+{pts}p) | "
+                f"Gājiens #{self.game_stats.computer_moves_count if self.game_stats else 0} | "
+                f"Ģenerētas: {stats.generated_nodes} | "
+                f"Novērtētas: {stats.evaluated_nodes} | "
+                f"Laiks: {stats.elapsed_time:.4f}s"
+            )
+        )
         self._refresh()
 
         if self.game.game_over:
             self._show_end()
         else:
-            self.after(150, self._maybe_computer_move)
+            self.after(200, self._maybe_computer_move)
 
     def _on_symbol_click(self, idx: int):
         if self.game.game_over:
@@ -160,7 +190,6 @@ class GameGUI(tk.Frame):
                 return
 
             pair, repl, pts = self.game.apply_move(a)
-            self._make_tree()
             self.selected.clear()
             self.info_lbl.config(text=f"Gājiens: {pair} → {repl} (+{pts}p)")
             self._refresh()
@@ -168,15 +197,67 @@ class GameGUI(tk.Frame):
             if self.game.game_over:
                 self._show_end()
             else:
-                self.after(150, self._maybe_computer_move)
+                self.after(200, self._maybe_computer_move)
         else:
             self._refresh()
 
     def _show_end(self):
-        messagebox.showinfo(
-            "Spēle beigusies",
-            f"Punkti O: {self.game.score['O']} | X: {self.game.score['X']}\n{self.game.winner_text()}"
+        base_text = (
+            f"Punkti O: {self.game.score['O']} | X: {self.game.score['X']}\n"
+            f"{self.game.winner_text()}"
         )
+
+        if self.game_stats is not None:
+            extra = (
+                f"\n\n--- Datora statistika visā spēlē ---\n"
+                f"Algoritms: {self.game_stats.algorithm_name}\n"
+                f"Datora simbols: {self.game_stats.computer_symbol}\n"
+                f"Datora gājienu skaits: {self.game_stats.computer_moves_count}\n"
+                f"Ģenerētās virsotnes kopā: {self.game_stats.generated_nodes_total}\n"
+                f"Novērtētās virsotnes kopā: {self.game_stats.evaluated_nodes_total}\n"
+                f"Kopējais laiks: {self.game_stats.total_time:.4f}s\n"
+                f"Vidējais laiks uz gājienu: {self.game_stats.average_time:.4f}s"
+            )
+            messagebox.showinfo("Spēle beigusies", base_text + extra)
+        else:
+            messagebox.showinfo("Spēle beigusies", base_text)
+
+    def _get_symbol_style(self, length: int):
+        if length >= 24:
+            return {
+                "font": ("Consolas", 15, "bold"),
+                "width": 2,
+                "height": 1,
+                "padx": 2,
+                "pady": 2,
+                "index_font": ("Consolas", 8)
+            }
+        if length >= 21:
+            return {
+                "font": ("Consolas", 17, "bold"),
+                "width": 2,
+                "height": 1,
+                "padx": 3,
+                "pady": 3,
+                "index_font": ("Consolas", 9)
+            }
+        if length >= 18:
+            return {
+                "font": ("Consolas", 19, "bold"),
+                "width": 3,
+                "height": 1,
+                "padx": 3,
+                "pady": 3,
+                "index_font": ("Consolas", 10)
+            }
+        return {
+            "font": ("Consolas", 22, "bold"),
+            "width": 4,
+            "height": 2,
+            "padx": 4,
+            "pady": 4,
+            "index_font": ("Consolas", 11)
+        }
 
     def _refresh(self):
         if not self.game.game_over:
@@ -201,10 +282,15 @@ class GameGUI(tk.Frame):
             ).pack()
             return
 
-        row1 = tk.Frame(self.board_frame, bg=THEME["bg"])
-        row1.pack(pady=(0, 10))
+        style = self._get_symbol_style(len(self.game.s))
 
-        row2 = tk.Frame(self.board_frame, bg=THEME["bg"])
+        board_container = tk.Frame(self.board_frame, bg=THEME["bg"])
+        board_container.place(relx=0.5, rely=0.45, anchor="center")
+
+        row1 = tk.Frame(board_container, bg=THEME["bg"])
+        row1.pack(pady=(0, 8))
+
+        row2 = tk.Frame(board_container, bg=THEME["bg"])
         row2.pack()
 
         for i, ch in enumerate(self.game.s):
@@ -215,9 +301,9 @@ class GameGUI(tk.Frame):
             btn = tk.Button(
                 row1,
                 text=ch,
-                width=4,
-                height=2,
-                font=("Consolas", 22, "bold"),
+                width=style["width"],
+                height=style["height"],
+                font=style["font"],
                 bg=normal_bg,
                 fg=THEME["btn_fg"],
                 activebackground=THEME["accent"],
@@ -226,7 +312,7 @@ class GameGUI(tk.Frame):
                 bd=2,
                 command=lambda idx=i: self._on_symbol_click(idx)
             )
-            btn.grid(row=0, column=i, padx=4, pady=4)
+            btn.grid(row=0, column=i, padx=style["padx"], pady=style["pady"])
 
             def on_enter(e, b=btn, sel=is_sel):
                 if not sel:
@@ -241,7 +327,7 @@ class GameGUI(tk.Frame):
             tk.Label(
                 row2,
                 text=str(i),
-                font=("Consolas", 11),
+                font=style["index_font"],
                 bg=THEME["bg"],
                 fg=THEME["muted"]
-            ).grid(row=0, column=i, padx=4)
+            ).grid(row=0, column=i, padx=style["padx"])

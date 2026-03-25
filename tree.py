@@ -1,70 +1,122 @@
-class GameNode:
-    def __init__(self, state, player, children=None):
-        self.state = state
-        self.player = player
-        self.children = children if children else []
+from dataclasses import dataclass, field
+from typing import List, Optional
+
+from game_logic import GameState
 
 
-def make_state(string, turn="O"):
-    return {"board": string, "turn": turn}
+@dataclass
+class TreeNode:
+    state: GameState
+    depth: int = 0
+    move_index: Optional[int] = None
+    move_pair: Optional[str] = None
+    replacement: Optional[str] = None
+    points_gained: int = 0
+    children: List["TreeNode"] = field(default_factory=list)
+
+    def is_terminal(self) -> bool:
+        return self.state.game_over
+
+    def expand(self) -> List["TreeNode"]:
+        """
+        Ģenerē visus bērnmezglus no pašreizējā stāvokļa,
+        balstoties uz visiem legālajiem gājieniem.
+        """
+        if self.children:
+            return self.children
+
+        if self.state.game_over:
+            return self.children
+
+        legal_moves = self.state.get_legal_moves()
+
+        for move in legal_moves:
+            child_state = self.state.copy()
+            original_pair = child_state.s[move:move + 2]
+
+            pair, replacement, pts = child_state.apply_move(move)
+
+            child = TreeNode(
+                state=child_state,
+                depth=self.depth + 1,
+                move_index=move,
+                move_pair=original_pair if original_pair else pair,
+                replacement=replacement,
+                points_gained=pts,
+            )
+            self.children.append(child)
+
+        return self.children
 
 
-def get_possible_moves(state):
-    board = state["board"]
-    moves = []
-    for i in range(len(board)):
-        if board[i] == "X":
-            new_board = board[:i] + "O" + board[i+1:]
-            moves.append(new_board)
-    return moves
+def build_game_tree(root_state: GameState, max_depth: int) -> TreeNode:
+    """
+    Uzbūvē spēles koku līdz noteiktam dziļumam.
+    """
+    root = TreeNode(state=root_state.copy(), depth=0)
+    _build_recursive(root, max_depth)
+    return root
 
 
-def switch_player(player):
-    return "X" if player == "O" else "O"
+def _build_recursive(node: TreeNode, max_depth: int):
+    if node.depth >= max_depth:
+        return
+
+    if node.state.game_over:
+        return
+
+    children = node.expand()
+    for child in children:
+        _build_recursive(child, max_depth)
 
 
-def build_game_tree(state, depth, ai_player):
-    if depth == 0:
-        return GameNode(state, state["turn"])
-
-    node = GameNode(state, state["turn"])
-
-    moves = get_possible_moves(state)
-    for move in moves:
-        child_state = {
-            "board": move,
-            "turn": switch_player(state["turn"])
-        }
-        child_node = build_game_tree(child_state, depth - 1, ai_player)
-        node.children.append(child_node)
-
-    return node
-
-
-def tree_to_text(node, level=0):
-    result = "  " * level + f"{node.state['board']} ({node.player})\n"
+def count_nodes(node: TreeNode) -> int:
+    total = 1
     for child in node.children:
-        result += tree_to_text(child, level + 1)
-    return result
+        total += count_nodes(child)
+    return total
 
 
-def tree_to_dot(node):
-    lines = ["digraph G {"]
-    counter = {"id": 0}
+def count_leaf_nodes(node: TreeNode) -> int:
+    if not node.children:
+        return 1
+    return sum(count_leaf_nodes(child) for child in node.children)
 
-    def traverse(n, parent_id=None):
-        node_id = counter["id"]
-        counter["id"] += 1
 
-        label = n.state["board"]
-        lines.append(f'  node{node_id} [label="{label}"];')
+def tree_to_text(node: TreeNode, indent: int = 0) -> str:
+    """
+    Pārvērš koku teksta formā.
+    Noder debugam un atskaites skaidrojumam.
+    """
+    prefix = "  " * indent
 
-        if parent_id is not None:
-            lines.append(f"  node{parent_id} -> node{node_id};")
+    if node.move_index is None:
+        move_info = "ROOT"
+    else:
+        move_info = (
+            f"move@{node.move_index}: "
+            f"{node.move_pair} -> {node.replacement} "
+            f"(+{node.points_gained})"
+        )
 
-        for child in n.children:
-            traverse(child, node_id)
+    line = (
+        f"{prefix}{move_info} | "
+        f"turn={node.state.turn} | "
+        f"s='{node.state.s}' | "
+        f"O={node.state.score['O']} X={node.state.score['X']} | "
+        f"game_over={node.state.game_over}"
+    )
 
-    traverse(node)
-    lines.append("}")
+    lines = [line]
+    for child in node.children:
+        lines.append(tree_to_text(child, indent + 1))
+
     return "\n".join(lines)
+
+
+def get_root_summary(node: TreeNode) -> str:
+    return (
+        f"Root: s='{node.state.s}', turn={node.state.turn}, "
+        f"O={node.state.score['O']}, X={node.state.score['X']}, "
+        f"children={len(node.children)}"
+    )
