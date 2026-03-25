@@ -11,9 +11,9 @@ class GameState:
         self.score = {"O": 0, "X": 0}
         self.game_over = True
 
-    def generate(self, n: int):
+    def generate(self, n: int, starting_turn: str = "O"):
         self.s = "".join(random.choice(["X", "O"]) for _ in range(n))
-        self.turn = "O"
+        self.turn = starting_turn
         self.score = {"O": 0, "X": 0}
         self.game_over = False
 
@@ -78,7 +78,6 @@ class GameState:
         return "Neizšķirts!"
 
     def copy(self):
-        """Returns a deep copy of the current game state for search purposes."""
         new_state = GameState()
         new_state.s = self.s
         new_state.turn = self.turn

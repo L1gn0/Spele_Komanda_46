@@ -13,6 +13,7 @@ class StartScreen(tk.Frame):
         self.opponent_var = tk.StringVar(value="human")
         self.algorithm_var = tk.StringVar(value="minimax")
         self.length_var = tk.IntVar(value=15)
+        self.starting_player_var = tk.StringVar(value="human")  # human / computer
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -67,6 +68,41 @@ class StartScreen(tk.Frame):
             activeforeground=THEME["text"]
         ).pack(anchor="w", pady=4)
 
+        box2 = tk.LabelFrame(
+            self,
+            text="Kurš sāk spēli?",
+            padx=14,
+            pady=14,
+            bg=THEME["panel"],
+            fg=THEME["text"]
+        )
+        box2.grid(row=1, column=1, sticky="nsew", padx=(0, 12), pady=(0, 12))
+
+        self.rb_start_human = tk.Radiobutton(
+            box2,
+            text="Cilvēks",
+            variable=self.starting_player_var,
+            value="human",
+            bg=THEME["panel"],
+            fg=THEME["text"],
+            selectcolor=THEME["bg"],
+            activebackground=THEME["panel"],
+            activeforeground=THEME["text"]
+        )
+        self.rb_start_computer = tk.Radiobutton(
+            box2,
+            text="Dators",
+            variable=self.starting_player_var,
+            value="computer",
+            bg=THEME["panel"],
+            fg=THEME["text"],
+            selectcolor=THEME["bg"],
+            activebackground=THEME["panel"],
+            activeforeground=THEME["text"]
+        )
+        self.rb_start_human.pack(anchor="w", pady=4)
+        self.rb_start_computer.pack(anchor="w", pady=4)
+
         box3 = tk.LabelFrame(
             self,
             text="Algoritms datoram",
@@ -75,7 +111,7 @@ class StartScreen(tk.Frame):
             bg=THEME["panel"],
             fg=THEME["text"]
         )
-        box3.grid(row=1, column=1, columnspan=2, sticky="nsew", pady=(0, 12))
+        box3.grid(row=1, column=2, sticky="nsew", pady=(0, 12))
 
         self.rb_minimax = tk.Radiobutton(
             box3,
@@ -134,9 +170,11 @@ class StartScreen(tk.Frame):
 
         note = tk.Label(
             self,
-            text="Piezīme: pašreizējā versijā spēli vienmēr sāk O (apļi).",
+            text="Piezīme: pēc spēles noteikumiem pirmais simbols ir O. Ja sāk dators, tad dators spēlē ar O.",
             bg=THEME["bg"],
-            fg=THEME["muted"]
+            fg=THEME["muted"],
+            wraplength=900,
+            justify="left"
         )
         note.grid(row=3, column=0, columnspan=3, sticky="w", pady=(0, 12))
 
@@ -169,9 +207,15 @@ class StartScreen(tk.Frame):
 
     def _sync_controls(self):
         vs_comp = self.opponent_var.get() == "computer"
-        state = "normal" if vs_comp else "disabled"
-        self.rb_minimax.configure(state=state)
-        self.rb_ab.configure(state=state)
+        algo_state = "normal" if vs_comp else "disabled"
+        start_comp_state = "normal" if vs_comp else "disabled"
+
+        self.rb_minimax.configure(state=algo_state)
+        self.rb_ab.configure(state=algo_state)
+        self.rb_start_computer.configure(state=start_comp_state)
+
+        if not vs_comp and self.starting_player_var.get() == "computer":
+            self.starting_player_var.set("human")
 
     def _start(self):
         ok, result = validate_length(self.length_var.get())
@@ -182,6 +226,7 @@ class StartScreen(tk.Frame):
         settings = {
             "opponent": self.opponent_var.get(),
             "algorithm": self.algorithm_var.get(),
-            "length": result
+            "length": result,
+            "starting_player": self.starting_player_var.get()
         }
         self.on_start(settings)

@@ -1,177 +1,264 @@
 import random
 import time
+from dataclasses import dataclass
 
 
-def is_terminal_state(state) -> bool:
-    """Compatibility helper for game state terminal checks."""
-    if hasattr(state, "is_terminal"):
-        return state.is_terminal()
-    return bool(getattr(state, "game_over", False))
+@dataclass
+class SearchStats:
+    generated_nodes: int = 0
+    evaluated_nodes: int = 0
+    elapsed_time: float = 0.0
+    algorithm_name: str = ""
+
+    def to_dict(self):
+        return {
+            "generated_nodes": self.generated_nodes,
+            "evaluated_nodes": self.evaluated_nodes,
+            "elapsed_time": self.elapsed_time,
+            "algorithm_name": self.algorithm_name,
+        }
 
 
-def heuristic(state, ai_player: str) -> int:
-    """
-    Simple heuristic evaluation function:
-    - At terminal states: large score difference multiplier
-    - During search: current score difference + rough mobility bonus/penalty
-    """
-    opp = "X" if ai_player == "O" else "O"
-    score_diff = state.score[ai_player] - state.score[opp]
+@dataclass
+class GameStats:
+    algorithm_name: str = ""
+    computer_symbol: str = ""
+    generated_nodes_total: int = 0
+    evaluated_nodes_total: int = 0
+    total_time: float = 0.0
+    computer_moves_count: int = 0
 
-    if is_terminal_state(state):
-        return score_diff * 100               # terminal states get very high weight
+    def add_search(self, search_stats: SearchStats):
+        self.generated_nodes_total += search_stats.generated_nodes
+        self.evaluated_nodes_total += search_stats.evaluated_nodes
+        self.total_time += search_stats.elapsed_time
+        self.computer_moves_count += 1
 
-    # Mobility heuristic: number of legal moves available
-    moves = state.get_legal_moves()
-    mobility_bonus = len(moves) * 1.5 if state.turn == ai_player else -len(moves) * 1.5
+    @property
+    def average_time(self) -> float:
+        if self.computer_moves_count == 0:
+            return 0.0
+        return self.total_time / self.computer_moves_count
 
-    return score_diff + mobility_bonus
-
-
-# ====================== MINIMAX ======================
-def minimax(state, depth: int, ai_player: str) -> int:
-    """
-    Classic minimax evaluation without alpha-beta pruning.
-    Recursively evaluates the game tree to the given depth.
-    """
-    if depth == 0 or is_terminal_state(state):
-        return heuristic(state, ai_player)
-
-    legal_moves = state.get_legal_moves()
-    if not legal_moves:
-        return heuristic(state, ai_player)
-
-    if state.turn == ai_player:
-        # Maximizing player (AI)
-        max_eval = float('-inf')
-        for move in legal_moves:
-            child = state.copy()
-            child.apply_move(move)
-            eval_score = minimax(child, depth - 1, ai_player)
-            max_eval = max(max_eval, eval_score)
-        return max_eval
-    else:
-        # Minimizing player (opponent)
-        min_eval = float('inf')
-        for move in legal_moves:
-            child = state.copy()
-            child.apply_move(move)
-            eval_score = minimax(child, depth - 1, ai_player)
-            min_eval = min(min_eval, eval_score)
-        return min_eval
+    def to_dict(self):
+        return {
+            "algorithm_name": self.algorithm_name,
+            "computer_symbol": self.computer_symbol,
+            "generated_nodes_total": self.generated_nodes_total,
+            "evaluated_nodes_total": self.evaluated_nodes_total,
+            "total_time": self.total_time,
+            "computer_moves_count": self.computer_moves_count,
+            "average_time": self.average_time,
+        }
 
 
-def minimax_move(game_state, depth=5):
-    """
-    Selects the best move using plain minimax search.
-    Returns the move index or None if no moves are available.
-    """
-    ai_player = game_state.turn
+def heuristic(game_state, computer_symbol):
+    human_symbol = "O" if computer_symbol == "X" else "X"
+
+    if game_state.game_over:
+        comp_score = game_state.score[computer_symbol]
+        human_score = game_state.score[human_symbol]
+
+        if comp_score > human_score:
+            return 10000
+        if comp_score < human_score:
+            return -10000
+        return 0
+
+    comp_score = game_state.score[computer_symbol]
+    human_score = game_state.score[human_symbol]
+
+    score_diff = comp_score - human_score
+    legal_moves_now = len(game_state.get_legal_moves())
+    mobility = legal_moves_now if game_state.turn == computer_symbol else -legal_moves_now
+
+    return score_diff * 10 + mobility
+
+
+def minimax(game_state, depth, maximizing, computer_symbol, stats):
+    if depth == 0 or game_state.game_over:
+        stats.evaluated_nodes += 1
+        return heuristic(game_state, computer_symbol), None
+
     legal_moves = game_state.get_legal_moves()
     if not legal_moves:
-        return None
+        stats.evaluated_nodes += 1
+        return heuristic(game_state, computer_symbol), None
 
     best_move = None
-    best_value = float('-inf')
 
+    if maximizing:
+        max_eval = float("-inf")
+        for move in legal_moves:
+            child = game_state.copy()
+            child.apply_move(move)
+            stats.generated_nodes += 1
+
+            eval_score, _ = minimax(
+                child,
+                depth - 1,
+                False,
+                computer_symbol,
+                stats
+            )
+
+            if eval_score > max_eval:
+                max_eval = eval_score
+                best_move = move
+
+        return max_eval, best_move
+
+    min_eval = float("inf")
     for move in legal_moves:
         child = game_state.copy()
         child.apply_move(move)
-        value = minimax(child, depth - 1, ai_player)
-        if value > best_value:
-            best_value = value
+        stats.generated_nodes += 1
+
+        eval_score, _ = minimax(
+            child,
+            depth - 1,
+            True,
+            computer_symbol,
+            stats
+        )
+
+        if eval_score < min_eval:
+            min_eval = eval_score
             best_move = move
 
-    return best_move
+    return min_eval, best_move
 
 
-# ====================== ALPHA-BETA PRUNING ======================
-def alphabeta(state, depth: int, alpha: float, beta: float, ai_player: str, maximizing: bool) -> int:
-    """
-    Alpha-beta pruning version of minimax.
-    Prunes branches that won't affect the final decision.
-    """
-    if depth == 0 or is_terminal_state(state):
-        return heuristic(state, ai_player)
+def minimax_move(game_state, computer_symbol):
+    stats = SearchStats(algorithm_name="minimax")
+    maximizing = (game_state.turn == computer_symbol)
 
-    legal_moves = state.get_legal_moves()
+    _, move = minimax(
+        game_state,
+        depth=6,
+        maximizing=maximizing,
+        computer_symbol=computer_symbol,
+        stats=stats
+    )
+
+    if move is None:
+        legal_moves = game_state.get_legal_moves()
+        move = random.choice(legal_moves) if legal_moves else None
+
+    return move, stats
+
+
+def alphabeta(game_state, depth, alpha, beta, maximizing, computer_symbol, stats):
+    if depth == 0 or game_state.game_over:
+        stats.evaluated_nodes += 1
+        return heuristic(game_state, computer_symbol), None
+
+    legal_moves = game_state.get_legal_moves()
     if not legal_moves:
-        return heuristic(state, ai_player)
+        stats.evaluated_nodes += 1
+        return heuristic(game_state, computer_symbol), None
 
-    if maximizing:  # AI's turn (maximizing)
-        max_eval = float('-inf')
+    best_move = None
+
+    if maximizing:
+        max_eval = float("-inf")
         for move in legal_moves:
-            child = state.copy()
+            child = game_state.copy()
             child.apply_move(move)
-            eval_score = alphabeta(child, depth - 1, alpha, beta, ai_player, False)
-            max_eval = max(max_eval, eval_score)
+            stats.generated_nodes += 1
+
+            eval_score, _ = alphabeta(
+                child,
+                depth - 1,
+                alpha,
+                beta,
+                False,
+                computer_symbol,
+                stats
+            )
+
+            if eval_score > max_eval:
+                max_eval = eval_score
+                best_move = move
+
             alpha = max(alpha, eval_score)
             if beta <= alpha:
-                break  # Beta cutoff
-        return max_eval
-    else:  # Opponent's turn (minimizing)
-        min_eval = float('inf')
-        for move in legal_moves:
-            child = state.copy()
-            child.apply_move(move)
-            eval_score = alphabeta(child, depth - 1, alpha, beta, ai_player, True)
-            min_eval = min(min_eval, eval_score)
-            beta = min(beta, eval_score)
-            if beta <= alpha:
-                break  # Alpha cutoff
-        return min_eval
+                break
 
+        return max_eval, best_move
 
-def alphabeta_move(game_state, depth=6):
-    """
-    Selects the best move using alpha-beta pruning.
-    Usually faster than plain minimax → can afford slightly deeper search.
-    """
-    ai_player = game_state.turn
-    legal_moves = game_state.get_legal_moves()
-    if not legal_moves:
-        return None
-
-    best_move = None
-    best_value = float('-inf')
-    alpha = float('-inf')
-    beta = float('inf')
-
+    min_eval = float("inf")
     for move in legal_moves:
         child = game_state.copy()
         child.apply_move(move)
-        value = alphabeta(child, depth - 1, alpha, beta, ai_player, False)
-        if value > best_value:
-            best_value = value
+        stats.generated_nodes += 1
+
+        eval_score, _ = alphabeta(
+            child,
+            depth - 1,
+            alpha,
+            beta,
+            True,
+            computer_symbol,
+            stats
+        )
+
+        if eval_score < min_eval:
+            min_eval = eval_score
             best_move = move
-        alpha = max(alpha, value)
+
+        beta = min(beta, eval_score)
         if beta <= alpha:
-            break  # Alpha cutoff at root level
+            break
 
-    return best_move
+    return min_eval, best_move
 
 
-# ====================== ENTRY POINT ======================
-def choose_move(game_state, algorithm_name="minimax"):
-    """
-    Main function called from the UI.
-    Selects and returns the best move according to the chosen algorithm.
-    """
-    legal = game_state.get_legal_moves()
-    if not legal:
-        return None
+def alphabeta_move(game_state, computer_symbol):
+    stats = SearchStats(algorithm_name="alphabeta")
+    maximizing = (game_state.turn == computer_symbol)
 
-    start_time = time.time()
+    _, move = alphabeta(
+        game_state,
+        depth=6,
+        alpha=float("-inf"),
+        beta=float("inf"),
+        maximizing=maximizing,
+        computer_symbol=computer_symbol,
+        stats=stats
+    )
+
+    if move is None:
+        legal_moves = game_state.get_legal_moves()
+        move = random.choice(legal_moves) if legal_moves else None
+
+    return move, stats
+
+
+def choose_move(game_state, algorithm_name="minimax", computer_symbol="X"):
+    legal_moves = game_state.get_legal_moves()
+    if not legal_moves:
+        return None, SearchStats(algorithm_name=algorithm_name)
+
+    start = time.perf_counter()
 
     if algorithm_name == "minimax":
-        move = minimax_move(game_state, depth=5)
+        move, stats = minimax_move(game_state, computer_symbol)
     elif algorithm_name == "alphabeta":
-        move = alphabeta_move(game_state, depth=6)
+        move, stats = alphabeta_move(game_state, computer_symbol)
     else:
-        move = random.choice(legal)
+        move = random.choice(legal_moves)
+        stats = SearchStats(algorithm_name="random")
+        stats.generated_nodes = len(legal_moves)
+        stats.evaluated_nodes = 1
 
-    # Optional: for experiments you can log performance
-    elapsed = time.time() - start_time
-    print(f"{algorithm_name} | move took {elapsed:.3f}s")
+    stats.elapsed_time = time.perf_counter() - start
 
-    return move
+    print(
+        f"{stats.algorithm_name} | computer={computer_symbol} | "
+        f"generated={stats.generated_nodes} | "
+        f"evaluated={stats.evaluated_nodes} | "
+        f"time={stats.elapsed_time:.6f}s"
+    )
+
+    return move, stats
